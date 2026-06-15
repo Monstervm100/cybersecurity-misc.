@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Threat Intelligence Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0e14; color: #c9d4e0; padding: 2rem; }
+  h1 { color: #7dd4fc; font-size: 1.6rem; margin-bottom: 0.3rem; }
+  .sub { color: #4a6076; font-size: 0.85rem; margin-bottom: 1.5rem; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .card { background: #0f1620; border: 1px solid #1c2a3a; border-radius: 12px; padding: 1rem 1.25rem; }
+  .card .n { font-size: 1.8rem; font-weight: 700; color: #fff; }
+  .card .l { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #4a6076; }
+  .controls { display: flex; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  input, select { background: #0f1620; border: 1px solid #1c2a3a; border-radius: 8px; color: #c9d4e0; padding: 0.55rem 0.8rem; font-size: 0.9rem; outline: none; }
+  input:focus, select:focus { border-color: #38bdf8; }
+  input { flex: 1; min-width: 200px; }
+  table { width: 100%; border-collapse: collapse; background: #0f1620; border: 1px solid #1c2a3a; border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 0.7rem 1rem; font-size: 0.85rem; border-bottom: 1px solid #1c2a3a; }
+  th { color: #4a6076; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.06em; }
+  td.ioc { font-family: 'Consolas', monospace; color: #7dd4fc; }
+  tr:hover td { background: #121b27; }
+  .sev { padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
+  .critical { background: #3b0d12; color: #ff6b81; }
+  .high { background: #3b2410; color: #ffa860; }
+  .medium { background: #3b3410; color: #ffe066; }
+  .low { background: #10303b; color: #7dd4fc; }
+  .empty { text-align: center; color: #4a6076; padding: 2rem; }
+</style>
+</head>
+<body>
+<h1>Threat Intelligence Dashboard</h1>
+<p class="sub">Aggregated indicators of compromise (IOCs) — sample dataset</p>
+
+<div class="cards" id="cards"></div>
+
+<div class="controls">
+  <input id="search" placeholder="Search IOC, threat, or source..." />
+  <select id="typeFilter">
+    <option value="">All types</option>
+    <option value="ip">IP</option>
+    <option value="domain">Domain</option>
+    <option value="hash">Hash</option>
+    <option value="url">URL</option>
+  </select>
+  <select id="sevFilter">
+    <option value="">All severities</option>
+    <option value="critical">Critical</option>
+    <option value="high">High</option>
+    <option value="medium">Medium</option>
+    <option value="low">Low</option>
+  </select>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Indicator</th><th>Type</th><th>Threat</th><th>Severity</th><th>Source</th><th>Last seen</th></tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<script>
+const IOCS = [
+  { ioc: "185.220.101.47", type: "ip", threat: "Tor exit / scanning", sev: "medium", source: "AbuseIPDB", seen: "2026-06-14" },
+  { ioc: "45.133.1.22", type: "ip", threat: "Brute-force SSH", sev: "high", source: "Honeypot", seen: "2026-06-15" },
+  { ioc: "secure-login-update.com", type: "domain", threat: "Phishing kit host", sev: "critical", source: "PhishTank", seen: "2026-06-15" },
+  { ioc: "cdn-analytics-tracker.net", type: "domain", threat: "Malware C2", sev: "critical", source: "URLhaus", seen: "2026-06-13" },
+  { ioc: "e99a18c428cb38d5f260853678922e03", type: "hash", threat: "Trojan dropper", sev: "high", source: "VirusTotal", seen: "2026-06-12" },
+  { ioc: "44d88612fea8a8f36de82e1278abb02f", type: "hash", threat: "EICAR test file", sev: "low", source: "VirusTotal", seen: "2026-06-10" },
+  { ioc: "http://203.0.113.9/payload.bin", type: "url", threat: "Malware delivery", sev: "critical", source: "URLhaus", seen: "2026-06-15" },
+  { ioc: "91.92.240.113", type: "ip", threat: "Botnet node", sev: "high", source: "Spamhaus", seen: "2026-06-14" },
+  { ioc: "free-gift-card-claim.io", type: "domain", threat: "Scam / credential theft", sev: "medium", source: "PhishTank", seen: "2026-06-11" },
+  { ioc: "5d41402abc4b2a76b9719d911017c592", type: "hash", threat: "Ransomware variant", sev: "critical", source: "MalwareBazaar", seen: "2026-06-15" },
+  { ioc: "198.51.100.23", type: "ip", threat: "Port scanning", sev: "low", source: "Honeypot", seen: "2026-06-09" },
+  { ioc: "account-verify-paypa1.com", type: "domain", threat: "Lookalike phishing", sev: "high", source: "OpenPhish", seen: "2026-06-14" }
+];
+
+const search = document.getElementById("search");
+const typeFilter = document.getElementById("typeFilter");
+const sevFilter = document.getElementById("sevFilter");
+
+function render() {
+  const q = search.value.toLowerCase();
+  const t = typeFilter.value;
+  const s = sevFilter.value;
+  const filtered = IOCS.filter(r =>
+    (!t || r.type === t) &&
+    (!s || r.sev === s) &&
+    (r.ioc.toLowerCase().includes(q) || r.threat.toLowerCase().includes(q) || r.source.toLowerCase().includes(q))
+  );
+
+  const rows = document.getElementById("rows");
+  if (!filtered.length) {
+    rows.innerHTML = '<tr><td colspan="6" class="empty">No matching indicators.</td></tr>';
+  } else {
+    rows.innerHTML = filtered.map(r => `
+      <tr>
+        <td class="ioc">${r.ioc}</td>
+        <td>${r.type.toUpperCase()}</td>
+        <td>${r.threat}</td>
+        <td><span class="sev ${r.sev}">${r.sev.toUpperCase()}</span></td>
+        <td>${r.source}</td>
+        <td>${r.seen}</td>
+      </tr>`).join("");
+  }
+
+  const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+  IOCS.forEach(r => counts[r.sev]++);
+  document.getElementById("cards").innerHTML = `
+    <div class="card"><div class="n">${IOCS.length}</div><div class="l">Total IOCs</div></div>
+    <div class="card"><div class="n" style="color:#ff6b81">${counts.critical}</div><div class="l">Critical</div></div>
+    <div class="card"><div class="n" style="color:#ffa860">${counts.high}</div><div class="l">High</div></div>
+    <div class="card"><div class="n" style="color:#ffe066">${counts.medium}</div><div class="l">Medium</div></div>
+    <div class="card"><div class="n" style="color:#7dd4fc">${counts.low}</div><div class="l">Low</div></div>`;
+}
+
+search.addEventListener("input", render);
+typeFilter.addEventListener("change", render);
+sevFilter.addEventListener("change", render);
+render();
+</script>
+</body>
+</html>

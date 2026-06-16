@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SIEM Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0e14; color: #c9d4e0; padding: 2rem; }
+  h1 { color: #7dd4fc; font-size: 1.6rem; margin-bottom: 0.3rem; }
+  .sub { color: #4a6076; font-size: 0.85rem; margin-bottom: 1.5rem; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .card { background: #0f1620; border: 1px solid #1c2a3a; border-radius: 12px; padding: 1rem 1.25rem; }
+  .card .n { font-size: 1.8rem; font-weight: 700; color: #fff; }
+  .card .l { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #4a6076; }
+  .controls { display: flex; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  input, select, button { background: #0f1620; border: 1px solid #1c2a3a; border-radius: 8px; color: #c9d4e0; padding: 0.55rem 0.8rem; font-size: 0.9rem; outline: none; }
+  input:focus, select:focus { border-color: #38bdf8; }
+  input { flex: 1; min-width: 200px; }
+  button { cursor: pointer; }
+  button:hover { border-color: #38bdf8; color: #7dd4fc; }
+  .events { background: #0f1620; border: 1px solid #1c2a3a; border-radius: 12px; overflow: hidden; }
+  .ev { display: grid; grid-template-columns: 150px 90px 130px 1fr; gap: 0.5rem; padding: 0.65rem 1rem; border-bottom: 1px solid #1c2a3a; font-size: 0.85rem; align-items: center; }
+  .ev:hover { background: #121b27; }
+  .ev .ts { color: #4a6076; font-family: 'Consolas', monospace; font-size: 0.78rem; }
+  .ev .src { font-family: 'Consolas', monospace; color: #7dd4fc; }
+  .sev { padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; text-align: center; }
+  .critical { background: #3b0d12; color: #ff6b81; }
+  .high { background: #3b2410; color: #ffa860; }
+  .medium { background: #3b3410; color: #ffe066; }
+  .info { background: #10303b; color: #7dd4fc; }
+  .empty { text-align: center; color: #4a6076; padding: 2rem; }
+</style>
+</head>
+<body>
+<h1>SIEM Dashboard</h1>
+<p class="sub">Security event correlation — sample stream</p>
+
+<div class="cards" id="cards"></div>
+
+<div class="controls">
+  <input id="search" placeholder="Search events..." />
+  <select id="sevFilter">
+    <option value="">All severities</option>
+    <option value="critical">Critical</option>
+    <option value="high">High</option>
+    <option value="medium">Medium</option>
+    <option value="info">Info</option>
+  </select>
+  <button id="simulate">Simulate event</button>
+</div>
+
+<div class="events" id="events"></div>
+
+<script>
+const TYPES = [
+  { src: "auth.log", sev: "high", msg: "Multiple failed SSH logins from 45.133.1.22" },
+  { src: "firewall", sev: "medium", msg: "Blocked inbound connection on port 3389" },
+  { src: "ids", sev: "critical", msg: "SQL injection pattern detected in /api/login" },
+  { src: "web.access", sev: "info", msg: "GET /index.html 200 from 198.51.100.10" },
+  { src: "auth.log", sev: "critical", msg: "Root login from new geolocation (RU)" },
+  { src: "edr", sev: "high", msg: "Suspicious PowerShell encoded command on HOST-07" },
+  { src: "dns", sev: "medium", msg: "Lookup for known C2 domain cdn-analytics-tracker.net" },
+  { src: "firewall", sev: "info", msg: "Allowed outbound HTTPS to api.github.com" },
+  { src: "edr", sev: "critical", msg: "Ransomware-like mass file rename on FILESRV-02" },
+  { src: "web.access", sev: "medium", msg: "404 spike from single IP 91.92.240.113 (dir scan)" }
+];
+
+let events = [];
+function stamp(d) { return d.toISOString().replace("T", " ").slice(0, 19); }
+
+function seed() {
+  const now = Date.now();
+  events = TYPES.map((t, i) => ({ ...t, ts: stamp(new Date(now - i * 95000)) }));
+}
+
+const search = document.getElementById("search");
+const sevFilter = document.getElementById("sevFilter");
+
+function render() {
+  const q = search.value.toLowerCase();
+  const s = sevFilter.value;
+  const filtered = events.filter(e =>
+    (!s || e.sev === s) &&
+    (e.msg.toLowerCase().includes(q) || e.src.toLowerCase().includes(q))
+  );
+
+  const box = document.getElementById("events");
+  if (!filtered.length) {
+    box.innerHTML = '<div class="empty">No matching events.</div>';
+  } else {
+    box.innerHTML = filtered.map(e => `
+      <div class="ev">
+        <span class="ts">${e.ts}</span>
+        <span class="sev ${e.sev}">${e.sev.toUpperCase()}</span>
+        <span class="src">${e.src}</span>
+        <span>${e.msg}</span>
+      </div>`).join("");
+  }
+
+  const counts = { critical: 0, high: 0, medium: 0, info: 0 };
+  events.forEach(e => counts[e.sev]++);
+  document.getElementById("cards").innerHTML = `
+    <div class="card"><div class="n">${events.length}</div><div class="l">Events</div></div>
+    <div class="card"><div class="n" style="color:#ff6b81">${counts.critical}</div><div class="l">Critical</div></div>
+    <div class="card"><div class="n" style="color:#ffa860">${counts.high}</div><div class="l">High</div></div>
+    <div class="card"><div class="n" style="color:#ffe066">${counts.medium}</div><div class="l">Medium</div></div>
+    <div class="card"><div class="n" style="color:#7dd4fc">${counts.info}</div><div class="l">Info</div></div>`;
+}
+
+document.getElementById("simulate").addEventListener("click", () => {
+  const t = TYPES[Math.floor(Math.random() * TYPES.length)];
+  events.unshift({ ...t, ts: stamp(new Date()) });
+  render();
+});
+search.addEventListener("input", render);
+sevFilter.addEventListener("change", render);
+
+seed();
+render();
+</script>
+</body>
+</html>
